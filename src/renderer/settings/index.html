@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>MiniPet Settings</title>
+    <script>
+      // Apply saved theme before first paint to avoid flash
+      const saved = localStorage.getItem('minipet-theme') ||
+        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', saved);
+    </script>
+    <link rel="stylesheet" href="settings.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="app">
+      <div id="toast-container" class="toast-container"></div>
+
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <span class="brand-name">MiniPet</span>
+        </div>
+        <nav class="sidebar-nav">
+          <button class="nav-item active" data-tab="pets">
+            <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3.314 2.686-6 6-6s6 2.686 6 6"/></svg>
+            <span data-i18n="activePets">Thú cưng</span>
+          </button>
+          <button class="nav-item" data-tab="config">
+            <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+            <span data-i18n="preferences">Tùy chọn</span>
+          </button>
+          <button class="nav-item" data-tab="flashcard">
+            <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M3 2h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/>
+              <path d="M3 6h10M3 10h10"/>
+            </svg>
+            <span data-i18n="flashcardTab">Flashcard</span>
+          </button>
+          <!-- Tabs for Web3 and Auto-Trade removed -->
+        </nav>
+        <div class="sidebar-footer">
+          <button id="ping-pet-btn" class="ping-btn">
+            <span data-i18n="pingPet">Ping</span>
+          </button>
+          <button id="theme-toggle-btn" class="theme-btn" title="Toggle light/dark mode">
+            <span class="theme-icon">🌙</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <div class="tab-content">
+          <!-- Tab 1: Pet Management -->
+          <div id="tab-pets" class="tab-panel active">
+            <div class="panel-header">
+              <h2 data-i18n="choosePet">Choose Your Pet</h2>
+            </div>
+            <div id="active-pets-list" class="active-pets-list"></div>
+            <div id="pet-gallery" class="pet-gallery"></div>
+          </div>
+
+          <!-- Tab 2: Configuration -->
+          <div id="tab-config" class="tab-panel">
+            <div class="panel-header">
+              <h2 data-i18n="preferences">Preferences</h2>
+              <p class="panel-sub" data-i18n="configSubtitle">Customize your pet behavior and productivity tools.</p>
+            </div>
+
+            <!-- Section: Appearance -->
+            <section class="settings-section">
+              <h3 class="section-title" data-i18n="appearanceSection">Appearance</h3>
+              <div class="row-list">
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="language">Language</span>
+                    <span class="row-desc" data-i18n="languageDesc">Interface and pet speech language</span>
+                  </div>
+                  <select id="language-select" class="select-md">
+                    <option value="en">English</option>
+                    <option value="vi">Tiếng Việt</option>
+                    <option value="fr">Français</option>
+                    <option value="zh">中文</option>
+                    <option value="it">Italiano</option>
+                    <option value="ko">한국어</option>
+                  </select>
+                </div>
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="petScale">Pet size</span>
+                    <span class="row-desc" data-i18n="petScaleDesc">Scale the pet from small to large</span>
+                  </div>
+                  <div class="range-control">
+                    <input type="range" id="scale-range" min="0.3" max="2" step="0.1" value="2" />
+                    <span id="scale-value" class="range-val">2.0×</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Section: Pomodoro -->
+            <section class="settings-section">
+              <div class="section-head">
+                <div>
+                  <h3 class="section-title" data-i18n="pomodoroSection">Pomodoro timer</h3>
+                  <p class="section-desc" data-i18n="pomodoroDesc">Focus sessions with auto break reminders.</p>
+                </div>
+                <span id="pomo-status" class="pomo-badge" data-mode="idle" data-i18n="statusIdle">Ready</span>
+              </div>
+
+              <div class="pomo-card-v2">
+                <!-- Left: Timer display -->
+                <div class="pomo-timer-col">
+                  <div class="pomo-ring-wrap">
+                    <svg class="pomo-ring" viewBox="0 0 120 120">
+                      <circle class="pomo-ring-bg" cx="60" cy="60" r="52"/>
+                      <circle class="pomo-ring-fill" id="pomo-ring-fill" cx="60" cy="60" r="52"
+                        stroke-dasharray="326.7" stroke-dashoffset="0"/>
+                    </svg>
+                    <div class="pomo-ring-inner">
+                      <div class="pomo-time" id="pomo-display">25:00</div>
+                      <div class="pomo-mode-label" id="pomo-mode-label">Focus</div>
+                    </div>
+                  </div>
+                  <div class="pomo-controls">
+                    <button id="pomo-reset-btn" class="pomo-ctrl-btn" data-tooltip-i18n="resetBtn">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M2.5 8A5.5 5.5 0 1 0 4 4.5"/><path d="M2 2v3h3"/></svg>
+                    </button>
+
+                    <button id="pomo-start-btn" class="pomo-play-btn">
+                      <svg id="pomo-play-icon" viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M5 3.5l8 4.5-8 4.5V3.5z"/></svg>
+                      <svg id="pomo-pause-icon" viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="display:none"><rect x="3" y="2" width="4" height="12" rx="1"/><rect x="9" y="2" width="4" height="12" rx="1"/></svg>
+                      <span id="pomo-start-label" data-i18n="startBtn">Start</span>
+                    </button>
+
+                    <button id="pomo-standard-btn" class="pomo-ctrl-btn" data-tooltip-i18n="restoreBtn">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Right: Config -->
+                <div class="pomo-config-col">
+                  <div class="pomo-config-row">
+                    <div class="pomo-config-item">
+                      <span class="pomo-config-label" data-i18n="focus">Focus</span>
+                      <div class="pomo-stepper">
+                        <button class="stepper-btn" data-target="pomo-focus-time" data-delta="-1">−</button>
+                        <div class="stepper-val-wrap">
+                          <input type="number" id="pomo-focus-time" value="25" min="1" max="120" />
+                          <span class="stepper-unit" data-i18n="minuteUnit">min</span>
+                        </div>
+                        <button class="stepper-btn" data-target="pomo-focus-time" data-delta="1">+</button>
+                      </div>
+                    </div>
+                    <div class="pomo-config-divider"></div>
+                    <div class="pomo-config-item">
+                      <span class="pomo-config-label" data-i18n="break">Break</span>
+                      <div class="pomo-stepper">
+                        <button class="stepper-btn" data-target="pomo-break-time" data-delta="-1">−</button>
+                        <div class="stepper-val-wrap">
+                          <input type="number" id="pomo-break-time" value="5" min="1" max="60" />
+                          <span class="stepper-unit" data-i18n="minuteUnit">min</span>
+                        </div>
+                        <button class="stepper-btn" data-target="pomo-break-time" data-delta="1">+</button>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="pomo-hint" data-i18n="pomoHint">Pet reminds you when each session ends. Click the pet to stop an alarm.</p>
+                </div>
+              </div>
+
+              <!-- Hidden compat buttons for JS hooks -->
+              <button id="pomo-pause-btn" style="display:none;"></button>
+            </section>
+
+            <!-- Section: Behavior -->
+            <section class="settings-section">
+              <h3 class="section-title" data-i18n="behaviorSection">Behavior</h3>
+              <div class="row-list">
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="enableWalking">Walking</span>
+                    <span class="row-desc" data-i18n="walkingDescShort">Pet walks around your screen autonomously</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="walking-toggle" checked />
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="launchAtStartup">Launch at startup</span>
+                    <span class="row-desc" data-i18n="startupDescShort">Open MiniPet automatically when you log in</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="startup-toggle" />
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+              </div>
+            </section>
+
+          </div>
+
+          <!-- Tab 3: Flashcard Configuration -->
+          <div id="tab-flashcard" class="tab-panel">
+            <div class="panel-header">
+              <h2 data-i18n="flashcardSection">English Flashcards</h2>
+              <p class="panel-sub" data-i18n="flashcardSectionDesc">Learn English vocabulary on desktop.</p>
+            </div>
+            
+            <section class="settings-section">
+              <div class="row-list">
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="enableFlashcards">Enable Flashcards</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="flashcard-toggle" />
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="flashcardAutoFlip">Auto Flip Card</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="flashcard-autoflip-toggle" />
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="flashcardMode">Interval Mode</span>
+                  </div>
+                  <select id="flashcard-mode" class="select-md">
+                    <option value="fixed" data-i18n="fcModeFixed">Fixed Interval</option>
+                    <option value="random" data-i18n="fcModeRandom">Random Interval</option>
+                  </select>
+                </div>
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="flashcardInterval">Frequency</span>
+                  </div>
+                  <select id="flashcard-interval" class="select-md">
+                    <option value="1">1 min (Test)</option>
+                    <option value="5">5 mins</option>
+                    <option value="10">10 mins</option>
+                    <option value="15">15 mins</option>
+                    <option value="30">30 mins</option>
+                    <option value="60">60 mins</option>
+                  </select>
+                </div>
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="flashcardScale">Card Size</span>
+                  </div>
+                  <div class="range-control">
+                    <input type="range" id="flashcard-scale-range" min="0.5" max="2" step="0.1" value="1" />
+                    <span id="flashcard-scale-value" class="range-val">1.0×</span>
+                  </div>
+                </div>
+                <div class="row button-row" style="margin-top: 16px; border-top: none; padding-top: 0; display: flex; justify-content: center;">
+                  <button id="test-flashcard-btn" class="ping-btn" style="width: 100%; height: 36px; font-weight: 600; cursor: pointer;">
+                    <span data-i18n="testFlashcard">Test Flashcard</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="settings-entry.ts"></script>
+  </body>
+</html>
