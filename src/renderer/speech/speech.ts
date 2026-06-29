@@ -34,6 +34,6 @@ void listen(`update-speech-${instanceId}`, (event: any) => {
     bubble.classList.add('visible');
   } else {
     bubble.classList.remove('visible');
-    setTimeout(() => win.hide(), 350);
+    setTimeout(() => { void win.hide(); }, 350);
   }
 });

@@ -12,7 +12,6 @@ import {
   getCurrentWebviewWindow,
 } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 
 let statusAlarming = false;
 let currentScale = 1.0;
@@ -25,29 +24,16 @@ let lastGlobalSpeechTime = 0;
 let controller: AnimationController;
 let stateMachine: PetStateMachine;
 
-/** Get a translated string with EN fallback. Supports {placeholder} replacement. */
-function tt(key: string, replacements?: Record<string, string>): string {
-  const t = translations[currentLanguage] || translations["en"];
-  let text = t[key] || (translations["en"] as any)[key] || key;
-  if (replacements) {
-    for (const [k, v] of Object.entries(replacements)) {
-      text = text.replace(`{${k}}`, v);
-    }
-  }
-  return text;
-}
 let currentSpeechText = "";
 let isMaster = false;
 let currentActivePets: any[] = [];
 let speechWindowRef: any = null;
 let lastContextKey = "";
 let lastCommentTime = 0;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let activePetConfig: any = null;
-let isChatActive = false;
-let isAnyChatActive = false;
-let pendingWalletSyncAddress = "";
-let isSuggestingWalletSync = false;
-let pendingSyncUrl = "";
+const isChatActive = false;
+const isAnyChatActive = false;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let cachedSettings: any = null;
 let flashcardWindowRef: any = null;
@@ -69,7 +55,7 @@ async function getOrCreateSpeechWindow() {
 
   if (!win) {
     const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-    win = new WebviewWindow(label, {
+    const createdWin = new WebviewWindow(label, {
       url: `renderer/speech/index.html?id=${instanceId}`,
       transparent: true,
       decorations: false,
@@ -82,17 +68,30 @@ async function getOrCreateSpeechWindow() {
       // Created hidden; shown by updateSpeechOverlay once positioned.
       visible: false,
     });
+    win = createdWin;
     // Wait for the window (and its JS listener) to be ready before we broadcast.
     await new Promise<void>((resolve) => {
-      void win!.once("tauri://created", () => resolve());
-      void win!.once("tauri://error", () => resolve());
-      setTimeout(resolve, 5000);
+      void createdWin.once("tauri://created", () => {
+        resolve();
+      });
+      void createdWin.once("tauri://error", () => {
+        resolve();
+      });
+      setTimeout(() => {
+        resolve();
+      }, 5000);
     });
     // Brief settle so speech.ts has attached its `update-speech` listener
     // before the first broadcast (otherwise the first message can be missed).
-    await new Promise<void>((r) => setTimeout(r, 150));
+    await new Promise<void>((r) => {
+      setTimeout(() => {
+        r();
+      }, 150);
+    });
   }
-  if (!speechWindowRef) speechWindowRef = win;
+  if (!speechWindowRef) {
+    speechWindowRef = win;
+  }
   return speechWindowRef;
 }
 
@@ -105,7 +104,7 @@ async function getOrCreateFlashcardWindow() {
 
   if (!win) {
     const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-    win = new WebviewWindow(label, {
+    const createdWin = new WebviewWindow(label, {
       url: `renderer/flashcard/index.html?id=${instanceId}`,
       transparent: true,
       decorations: false,
@@ -117,18 +116,25 @@ async function getOrCreateFlashcardWindow() {
       shadow: false,
       visible: false,
     });
+    win = createdWin;
     // MUST wait for window to be fully created before we can interact with it.
     // Requires the `core:webview:allow-create-webview-window` capability.
     await new Promise<void>((resolve) => {
-      void win!.once("tauri://created", () => resolve());
-      void win!.once("tauri://error", (e) => {
+      void createdWin.once("tauri://created", () => {
+        resolve();
+      });
+      void createdWin.once("tauri://error", (e) => {
         console.error("[Flashcard] window creation failed:", e.payload);
         resolve();
       });
-      setTimeout(resolve, 5000); // safety fallback
+      setTimeout(() => {
+        resolve();
+      }, 5000); // safety fallback
     });
   }
-  if (!flashcardWindowRef) flashcardWindowRef = win;
+  if (!flashcardWindowRef) {
+    flashcardWindowRef = win;
+  }
   return flashcardWindowRef;
 }
 
@@ -136,7 +142,7 @@ async function syncSpeechWindowPosition(customW?: number, customH?: number) {
   if (!speechWindowRef || !isSpeechVisible) return;
 
   const appWin = getCurrentWebviewWindow();
-  let pos = { x: 0, y: 0 };
+  const pos = { x: 0, y: 0 };
   try {
     const outerPos = await appWin.outerPosition();
     const { currentMonitor } = await import("@tauri-apps/api/window");
@@ -144,7 +150,7 @@ async function syncSpeechWindowPosition(customW?: number, customH?: number) {
     const factor = monitor?.scaleFactor || 1;
     pos.x = outerPos.x / factor;
     pos.y = outerPos.y / factor;
-  } catch (err) {
+  } catch {
     const cachedPos = window.electronAPI.getLogicalPosition();
     if (cachedPos.x === null || cachedPos.y === null) return;
     pos.x = cachedPos.x;
@@ -160,8 +166,8 @@ async function syncSpeechWindowPosition(customW?: number, customH?: number) {
   // Center horizontally over the pet sprite width, then shift 20% of the speech window width to the right.
   // Vertically: Anchor the bottom of the speech window (newY + speechH) to a fixed point (pos.y + 64)
   // so the tail pointing at the pet never jumps when the bubble height resizes dynamically.
-  let newX = Math.round(pos.x + petWidth / 2 - speechW / 2);
-  let newY = Math.round(pos.y + 64 - speechH * 2);
+  const newX = Math.round(pos.x + petWidth / 2 - speechW / 2);
+  const newY = Math.round(pos.y + 64 - speechH * 2);
 
   const { LogicalPosition } = await import("@tauri-apps/api/window");
 
@@ -174,7 +180,7 @@ async function syncFlashcardWindowPosition(customW?: number, customH?: number) {
   if (!flashcardWindowRef) return;
 
   const appWin = getCurrentWebviewWindow();
-  let pos = { x: 0, y: 0 };
+  const pos = { x: 0, y: 0 };
   try {
     const outerPos = await appWin.outerPosition();
     const { currentMonitor } = await import("@tauri-apps/api/window");
@@ -182,7 +188,7 @@ async function syncFlashcardWindowPosition(customW?: number, customH?: number) {
     const factor = monitor?.scaleFactor || 1;
     pos.x = outerPos.x / factor;
     pos.y = outerPos.y / factor;
-  } catch (err) {
+  } catch {
     const cachedPos = window.electronAPI.getLogicalPosition();
     if (cachedPos.x === null || cachedPos.y === null) return;
     pos.x = cachedPos.x;
@@ -563,13 +569,13 @@ async function init(): Promise<void> {
   // needs. Resize the window dynamically (so long text is never clipped)
   // and reposition it relative to the pet.
   void listen(`speech-size-${instanceId}`, (event: any) => {
+    const w = Math.round(Number(event.payload?.w));
+    const h = Math.round(Number(event.payload?.h));
+    if (!w || !h) return;
+    lastSpeechW = w;
+    lastSpeechH = h;
     void (async () => {
       if (!speechWindowRef || !isSpeechVisible) return;
-      const w = Math.round(Number(event.payload?.w));
-      const h = Math.round(Number(event.payload?.h));
-      if (!w || !h) return;
-      lastSpeechW = w;
-      lastSpeechH = h;
       const { LogicalSize } = await import("@tauri-apps/api/window");
       await speechWindowRef.setSize(new LogicalSize(w, h));
       await syncSpeechWindowPosition(w, h);
@@ -814,9 +820,13 @@ async function updateSpeechOverlay(text: string, visible: boolean) {
 
     if (!visible) {
       // Reset speech size when hidden so the next message starts with clean bounds
+      // eslint-disable-next-line require-atomic-updates
       lastSpeechW = 200;
+      // eslint-disable-next-line require-atomic-updates
       lastSpeechH = 80;
-      setTimeout(() => win.hide(), 350);
+      setTimeout(() => {
+        void win.hide();
+      }, 350);
     }
   } catch (err) {
     console.error("Failed to update speech window:", err);
@@ -1076,7 +1086,9 @@ async function showFlashcard(card: any): Promise<void> {
     await win.show();
     await syncFlashcardWindowPosition(winW, winH);
     // Brief delay for show() + position to settle before sending event
-    await new Promise<void>((r) => setTimeout(r, 150));
+    await new Promise<void>((r) => {
+      setTimeout(r, 150);
+    });
 
     const langKey = currentLanguage || "en";
     const meaning = card.translations[langKey] || card.translations["en"] || "";
@@ -1160,6 +1172,7 @@ async function showFlashcard(card: any): Promise<void> {
   } finally {
     clearTimeout(safetyTimer);
     void hideFlashcard();
+    // eslint-disable-next-line require-atomic-updates
     isShowingFlashcard = false;
     stateMachine.forceState("idle");
   }
@@ -1415,7 +1428,7 @@ function setupContextMonitoring(): void {
 }
 
 /** Placeholder for optional level-up transaction append — no-op until contract supports it */
-function maybeAppendLevelUp(_tx: unknown): void {
+function _maybeAppendLevelUp(_tx: unknown): void {
   /* reserved */
 }
 
