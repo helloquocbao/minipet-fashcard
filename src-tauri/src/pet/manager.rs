@@ -57,6 +57,24 @@ pub struct UserSettings {
     pub flashcard_auto_flip: bool,
     #[serde(rename = "flashcardScale", default = "default_flashcard_scale")]
     pub flashcard_scale: f64,
+    #[serde(rename = "translateEnabled", default)]
+    pub translate_enabled: bool,
+    #[serde(rename = "translateMode", default = "default_translate_mode")]
+    pub translate_mode: String,
+    #[serde(rename = "translateHotkey", default = "default_translate_hotkey")]
+    pub translate_hotkey: String,
+}
+
+fn default_translate_mode() -> String {
+    "hotkey".to_string()
+}
+
+fn default_translate_hotkey() -> String {
+    if cfg!(target_os = "macos") {
+        "Cmd+Shift+T".to_string()
+    } else {
+        "Ctrl+Shift+T".to_string()
+    }
 }
 
 fn default_flashcard_scale() -> f64 {
@@ -116,6 +134,9 @@ impl Default for UserSettings {
             flashcard_mode: "fixed".to_string(),
             flashcard_auto_flip: false,
             flashcard_scale: 1.0,
+            translate_enabled: false,
+            translate_mode: "hotkey".to_string(),
+            translate_hotkey: default_translate_hotkey(),
         }
     }
 }
@@ -492,6 +513,21 @@ impl PetManager {
             if let Some(v) = obj.get("flashcardAutoFlip") {
                 if let Some(b) = v.as_bool() {
                     self.settings.flashcard_auto_flip = b;
+                }
+            }
+            if let Some(v) = obj.get("translateEnabled") {
+                if let Some(b) = v.as_bool() {
+                    self.settings.translate_enabled = b;
+                }
+            }
+            if let Some(v) = obj.get("translateMode") {
+                if let Some(s) = v.as_str() {
+                    self.settings.translate_mode = s.to_string();
+                }
+            }
+            if let Some(v) = obj.get("translateHotkey") {
+                if let Some(s) = v.as_str() {
+                    self.settings.translate_hotkey = s.to_string();
                 }
             }
         }

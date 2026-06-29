@@ -203,6 +203,11 @@ export class AnimationController {
             this.logicalX = lx + actualMoveX;
             this.accumulatedX -= actualMoveX;
 
+            // Sync bubble and card positions immediately when the pet window moves
+            if (typeof (window as any).syncAllAttachedWindows === "function") {
+              (window as any).syncAllAttachedWindows();
+            }
+            
             // CRITICAL: We only update the X coordinate in the backend.
             // Throttle savePosition to avoid flooding IPC during walk.
             const now = performance.now();

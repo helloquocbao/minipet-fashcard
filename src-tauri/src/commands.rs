@@ -141,9 +141,22 @@ pub async fn update_settings(
     let mut mgr = state.pet_manager.lock().await;
     mgr.update_settings(settings.clone()).await;
 
+    let updated = mgr.get_settings();
+    let _ = app.emit("settings:update", updated.clone());
+    drop(mgr);
 
+    // Re-apply the global translation hotkey when its settings change.
+    #[cfg(desktop)]
+    crate::translate::sync_global_shortcut(&app, updated.translate_enabled, &updated.translate_mode);
 
-    let _ = app.emit("settings:update", mgr.get_settings());
+    Ok(())
+}
+
+/// Translate an arbitrary piece of text and show it on the pet (used by the
+/// "Test" button in Settings).
+#[tauri::command]
+pub async fn translate_test(app: AppHandle, text: String) -> Result<(), String> {
+    crate::translate::translate_and_say(&app, &text).await;
     Ok(())
 }
 
@@ -343,6 +356,7 @@ pub fn broadcast_pet_event(app: AppHandle, event: String, payload: serde_json::V
         "update-flashcard-",
         "flashcard-ready-",
         "flashcard-button-",
+        "speech-size-",
         "chat-mode-",
         "chat-mode-toggle-",
         "chat-reply-",

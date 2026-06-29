@@ -54,6 +54,12 @@ export interface UserSettings {
   flashcardMode: 'fixed' | 'random';
   flashcardAutoFlip: boolean;
   flashcardScale: number;
+  /** Translate-on-demand feature */
+  translateEnabled: boolean;
+  /** 'hotkey' = press shortcut to translate selection; 'auto' = translate on copy */
+  translateMode: 'hotkey' | 'auto';
+  /** Display string for the global hotkey (e.g. "Cmd+Shift+T") */
+  translateHotkey: string;
 }
 
 /** Which wallet an auto-trade strategy runs on */
@@ -95,4 +101,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   flashcardMode: 'fixed',
   flashcardAutoFlip: false,
   flashcardScale: 1.0,
+  translateEnabled: false,
+  translateMode: 'hotkey',
+  translateHotkey: 'Cmd+Shift+T',
 };

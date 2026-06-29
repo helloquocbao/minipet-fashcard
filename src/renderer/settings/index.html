@@ -39,6 +39,13 @@
             </svg>
             <span data-i18n="flashcardTab">Flashcard</span>
           </button>
+          <button class="nav-item" data-tab="translate">
+            <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="8" cy="8" r="6.5"/>
+              <path d="M1.5 8h13M8 1.5c1.8 2 1.8 11 0 13M8 1.5c-1.8 2-1.8 11 0 13"/>
+            </svg>
+            <span data-i18n="translateTab">Translate</span>
+          </button>
           <!-- Tabs for Web3 and Auto-Trade removed -->
         </nav>
         <div class="sidebar-footer">
@@ -255,18 +262,60 @@
                     <option value="60">60 mins</option>
                   </select>
                 </div>
-                <div class="row">
-                  <div class="row-info">
-                    <span class="row-label" data-i18n="flashcardScale">Card Size</span>
-                  </div>
-                  <div class="range-control">
-                    <input type="range" id="flashcard-scale-range" min="0.5" max="2" step="0.1" value="1" />
-                    <span id="flashcard-scale-value" class="range-val">1.0×</span>
-                  </div>
-                </div>
                 <div class="row button-row" style="margin-top: 16px; border-top: none; padding-top: 0; display: flex; justify-content: center;">
                   <button id="test-flashcard-btn" class="ping-btn" style="width: 100%; height: 36px; font-weight: 600; cursor: pointer;">
                     <span data-i18n="testFlashcard">Test Flashcard</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- Tab 4: Translation -->
+          <div id="tab-translate" class="tab-panel">
+            <div class="panel-header">
+              <h2 data-i18n="translateSection">Translate with your pet</h2>
+              <p class="panel-sub" data-i18n="translateSectionDesc">Highlight any word or phrase and let your pet translate it for you.</p>
+            </div>
+
+            <section class="settings-section">
+              <div class="row-list">
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="enableTranslate">Enable Translation</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="translate-toggle" />
+                    <span class="toggle-track"></span>
+                  </label>
+                </div>
+                <div class="row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="translateModeLabel">Trigger Mode</span>
+                    <span class="row-desc" id="translate-mode-hint" data-i18n="translateModeHintHotkey">Press the hotkey to translate the selected text.</span>
+                  </div>
+                  <select id="translate-mode" class="select-md">
+                    <option value="hotkey" data-i18n="translateModeHotkey">Hotkey</option>
+                    <option value="auto" data-i18n="translateModeAuto">Auto (on copy)</option>
+                  </select>
+                </div>
+                <div class="row" id="translate-hotkey-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="translateHotkeyLabel">Shortcut</span>
+                    <span class="row-desc" data-i18n="translateHotkeyHint">Select text in any app, then press this.</span>
+                  </div>
+                  <kbd id="translate-hotkey-display" class="kbd-shortcut">Cmd+Shift+T</kbd>
+                </div>
+                <div class="row column">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="geminiApiKeyLabel">Gemini API Key</span>
+                    <span class="row-desc" data-i18n="geminiApiKeyHint">Get a free key at aistudio.google.com. Stored locally on your device.</span>
+                  </div>
+                  <input type="password" id="gemini-api-key" class="input-md" autocomplete="off" spellcheck="false" placeholder="AQ.Ab8..." />
+                </div>
+                <div class="row button-row" style="margin-top: 16px; border-top: none; padding-top: 0; display: flex; justify-content: center;">
+                  <button id="test-translate-btn" class="ping-btn" style="width: 100%; height: 36px; font-weight: 600; cursor: pointer;">
+                    <span data-i18n="testTranslate">Test Translation</span>
                   </button>
                 </div>
               </div>

@@ -973,6 +973,31 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--text-dim);
 }
 
+/* Stacked row: label on top, full-width control below (e.g. API key field) */
+.row.column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.row.column .input-md {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Keyboard shortcut chip */
+.kbd-shortcut {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
 /* Selects */
 .select-md {
   padding: 8px 32px 8px 12px;

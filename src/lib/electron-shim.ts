@@ -9,6 +9,9 @@ import { LogicalPosition, LogicalSize } from "@tauri-apps/api/window";
 
 export function setupElectronShim() {
   const win = getCurrentWebviewWindow();
+  const isMac = navigator.userAgent.toLowerCase().includes('mac');
+  const getDpr = () => isMac ? 1 : (window.devicePixelRatio || 1);
+
   // Cache logical position to avoid async outerPosition() race conditions
   // Using object property to avoid require-atomic-updates on plain let vars
   const cache = { x: null as number | null, y: null as number | null };
@@ -32,7 +35,7 @@ export function setupElectronShim() {
       // fallback: use CSS screen dimensions
       const m = await (win as any).currentMonitor();
       if (m) {
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = getDpr();
         cachedMonitorX = m.position.x / dpr;
         cachedMonitorY = m.position.y / dpr;
         cachedMonitorW = m.size.width / dpr;
@@ -42,7 +45,7 @@ export function setupElectronShim() {
   };
 
   void win.outerPosition().then((pos) => {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = getDpr();
     cache.x = pos.x / dpr;
     cache.y = pos.y / dpr;
   });
@@ -121,7 +124,7 @@ export function setupElectronShim() {
       void invoke("set_drag_mode", { instanceId, enabled });
     },
     moveWindow: async (deltaX: number, deltaY: number) => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = getDpr();
       // Snapshot before any await to avoid require-atomic-updates
       let snapX = cache.x;
       let snapY = cache.y;
@@ -164,7 +167,7 @@ export function setupElectronShim() {
           cache.y = newPos.y;
         }
       } else {
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = getDpr();
         // Snapshot before any await to avoid require-atomic-updates
         let snapX = cache.x;
         let snapY = cache.y;
@@ -193,7 +196,7 @@ export function setupElectronShim() {
     suiRpcCall: (method: string, params: any[], rpc_url: string) =>
       invoke("sui_rpc_call", { method, params, rpcUrl: rpc_url }),
     savePosition: (instanceId: string, x?: number, y?: number) => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = getDpr();
       // Heuristic: if x/y are missing or seem physical (> screen width), use cache or convert.
       // window.screenX can be physical on some platforms in WRY/Tauri.
       const screenW = window.screen.width;
@@ -252,7 +255,7 @@ export function setupElectronShim() {
       void win.onMoved((event) => {
         void updateMonitor(); // refresh work area bounds (handles monitor switch)
         const pos = event.payload;
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = getDpr();
         cache.x = pos.x / dpr;
         cache.y = pos.y / dpr;
         cb(cache.x, cache.y);

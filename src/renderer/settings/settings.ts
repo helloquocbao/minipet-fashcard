@@ -325,18 +325,39 @@ function setupGlobalEventListeners() {
     });
   });
 
-  const fcScaleRange = document.getElementById("flashcard-scale-range") as HTMLInputElement;
-  const fcScaleValue = document.getElementById("flashcard-scale-value") as HTMLElement;
-  let fcScaleDebounce: any = null;
-  fcScaleRange?.addEventListener("input", () => {
-    const val = parseFloat(fcScaleRange.value);
-    if (fcScaleValue) fcScaleValue.textContent = `${val.toFixed(1)}x`;
-    if (fcScaleDebounce) clearTimeout(fcScaleDebounce);
-    fcScaleDebounce = setTimeout(() => api.updateSettings({ flashcardScale: val }), 150);
-  });
-
   document.getElementById("test-flashcard-btn")?.addEventListener("click", () => {
     api.broadcastPetEvent("trigger-flashcard-test", {});
+  });
+
+  // --- Translation ---
+  document.getElementById("translate-toggle")?.addEventListener("change", (e) => {
+    api.updateSettings({
+      translateEnabled: (e.target as HTMLInputElement).checked,
+    });
+  });
+
+  document.getElementById("translate-mode")?.addEventListener("change", (e) => {
+    const mode = (e.target as HTMLSelectElement).value;
+    updateTranslateModeUI(mode);
+    api.updateSettings({ translateMode: mode });
+  });
+
+  let keyDebounce: any = null;
+  document.getElementById("gemini-api-key")?.addEventListener("input", (e) => {
+    const val = (e.target as HTMLInputElement).value.trim();
+    if (keyDebounce) clearTimeout(keyDebounce);
+    keyDebounce = setTimeout(() => api.updateSettings({ geminiApiKey: val }), 400);
+  });
+
+  document.getElementById("test-translate-btn")?.addEventListener("click", () => {
+    void (async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const lang = currentSettings?.language || "en";
+      const sample = lang === "en" ? "Xin chào, bạn khỏe không?" : "Hello, how are you?";
+      await invoke("translate_test", { text: sample }).catch((err) =>
+        showToast(String(err), "error"),
+      );
+    })();
   });
 
   document
@@ -371,20 +392,41 @@ function populateForm(settings: UserSettings): void {
   const fcMode = document.getElementById("flashcard-mode") as HTMLSelectElement;
   const fcInterval = document.getElementById("flashcard-interval") as HTMLSelectElement;
   const fcAutoFlip = document.getElementById("flashcard-autoflip-toggle") as HTMLInputElement;
-  const fcScaleRangeInput = document.getElementById("flashcard-scale-range") as HTMLInputElement;
-  const fcScaleValueSpan = document.getElementById("flashcard-scale-value") as HTMLElement;
 
   if (fcToggle) fcToggle.checked = !!settings.flashcardEnabled;
   if (fcMode) fcMode.value = settings.flashcardMode || "fixed";
   if (fcInterval) fcInterval.value = (settings.flashcardInterval || 15).toString();
   if (fcAutoFlip) fcAutoFlip.checked = !!settings.flashcardAutoFlip;
-  
-  if (fcScaleRangeInput) {
-    fcScaleRangeInput.value = (settings.flashcardScale || 1.0).toString();
+
+  // Translation
+  const trToggle = document.getElementById("translate-toggle") as HTMLInputElement;
+  const trMode = document.getElementById("translate-mode") as HTMLSelectElement;
+  const trKey = document.getElementById("gemini-api-key") as HTMLInputElement;
+  const trHotkey = document.getElementById("translate-hotkey-display") as HTMLElement;
+
+  if (trToggle) trToggle.checked = !!settings.translateEnabled;
+  if (trMode) trMode.value = settings.translateMode || "hotkey";
+  // Don't clobber the field while the user is editing it.
+  if (trKey && document.activeElement !== trKey) {
+    trKey.value = (settings as any).geminiApiKey || "";
   }
-  if (fcScaleValueSpan) {
-    fcScaleValueSpan.textContent = `${(settings.flashcardScale || 1.0).toFixed(1)}x`;
+  if (trHotkey) trHotkey.textContent = settings.translateHotkey || "Cmd+Shift+T";
+  updateTranslateModeUI(settings.translateMode || "hotkey");
+}
+
+/** Show the right hint for the chosen trigger mode and hide the hotkey row in auto mode. */
+function updateTranslateModeUI(mode: string): void {
+  const lang = (currentSettings?.language as Language) || "en";
+  const t = translations[lang] || translations["en"];
+  const hint = document.getElementById("translate-mode-hint");
+  const hotkeyRow = document.getElementById("translate-hotkey-row");
+  if (hint) {
+    hint.textContent =
+      mode === "auto"
+        ? t.translateModeHintAuto || "Translate automatically whenever you copy text."
+        : t.translateModeHintHotkey || "Press the hotkey to translate the selected text.";
   }
+  if (hotkeyRow) hotkeyRow.style.display = mode === "auto" ? "none" : "flex";
 }
 
 function setupTabs(): void {

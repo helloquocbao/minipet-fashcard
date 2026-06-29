@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Flashcard</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
     ::-webkit-scrollbar { display: none; }
@@ -20,8 +20,8 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 10px;
-      font-family: 'Outfit', system-ui, sans-serif;
+      padding: 12px;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
 
     /* ── Wrapper: animates in/out ── */
@@ -45,11 +45,11 @@
 
     /* ── 3D flip container ── */
     #fc-container {
-      width:  var(--fc-w, 220px);
-      height: var(--fc-h, 130px);
-      perspective: 800px;
+      width:  var(--fc-w, 170px);
+      height: var(--fc-h, 215px);
+      perspective: 900px;
       flex-shrink: 0;
-      transition: width 0.25s ease, height 0.25s ease;
+      position: relative;
     }
 
     .fc-card {
@@ -65,13 +65,20 @@
     .fc-face {
       position: absolute;
       inset: 0;
+      min-height: 195px;            /* keeps the card a vertical (portrait) rectangle */
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
       border-radius: 16px;
-      padding: 14px 16px;
+      padding: 16px 14px 42px;      /* extra bottom space reserves room for the buttons */
       display: flex;
       flex-direction: column;
       justify-content: center;
+    }
+
+    /* Front: word centered. Back: content flows from the top. */
+    .fc-back {
+      justify-content: flex-start;
+      gap: 8px;
     }
 
     /* ── Front face ── */
@@ -81,22 +88,28 @@
       box-shadow:
         0 8px 24px rgba(108,99,255,0.15),
         0 2px 8px rgba(0,0,0,0.06);
+      align-items: center;
+      text-align: center;
+      justify-content: flex-start;   /* sit a bit higher than dead-center */
+      padding-top: 34px;
     }
 
     .fc-word {
-      font-size: 22px;
+      font-size: 21px;
       font-weight: 800;
-      background: linear-gradient(135deg, #6c63ff, #8b5cf6);
+      background: linear-gradient(135deg, #818cf8, #e879f9);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      line-height: 1.1;
-      margin-bottom: 6px;
-      letter-spacing: -0.5px;
+      line-height: 1.15;
+      margin-bottom: 9px;
+      letter-spacing: -0.3px;
+      overflow-wrap: break-word;
     }
 
     .fc-meta {
       display: flex;
+      flex-direction: column;
       align-items: center;
       gap: 6px;
     }
@@ -105,17 +118,17 @@
       font-size: 9px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.7px;
-      background: rgba(108,99,255,0.18);
-      color: #6c63ff;
-      padding: 2px 7px;
-      border-radius: 6px;
+      letter-spacing: 0.6px;
+      background: rgba(13,148,136,0.16);
+      color: #0f766e;
+      padding: 2px 8px;
+      border-radius: 5px;
     }
 
     .fc-ipa {
       font-size: 11px;
-      color: #6b7280;
-      font-weight: 400;
+      color: #57607a;
+      font-weight: 500;
       font-style: italic;
     }
 
@@ -132,49 +145,46 @@
     .fc-word-mini {
       font-size: 9px;
       font-weight: 700;
-      color: #8b5cf6;
+      color: #ec4899;
       text-transform: uppercase;
       letter-spacing: 0.6px;
-      margin-bottom: 5px;
     }
 
     .fc-meaning {
       font-size: 13px;
       font-weight: 700;
       color: #1e293b;
-      line-height: 1.35;
-      margin-bottom: 6px;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+      line-height: 1.38;
+      overflow-wrap: break-word;
     }
 
     .fc-example {
       font-size: 10.5px;
-      color: #64748b;
+      color: #475569;
       line-height: 1.45;
-      padding-left: 8px;
-      border-left: 2.5px solid #c4b5fd;
+      padding-left: 9px;
+      border-left: 2px solid #fbbf24;
       font-style: italic;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+      overflow-wrap: break-word;
     }
 
-    /* ── Action buttons ── */
+    /* ── Action buttons (anchored bottom-center INSIDE the card) ── */
     #action-buttons {
+      position: absolute;
+      bottom: 12px;
+      left: 0;
+      right: 0;
       display: flex;
-      gap: 8px;
+      gap: 6px;
       justify-content: center;
+      z-index: 10;
     }
 
     #action-buttons button {
-      padding: 6px 18px;
+      padding: 4px 13px;
       border: none;
-      border-radius: 20px;
-      font-size: 12px;
+      border-radius: 13px;
+      font-size: 10px;
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
@@ -186,18 +196,20 @@
     #action-buttons button:active { transform: scale(0.96); }
 
     #action-buttons .btn-primary {
-      background: linear-gradient(135deg, #6c63ff, #8b5cf6);
+      background: linear-gradient(135deg, #6d28d9, #4f46e5);
       color: #fff;
-      box-shadow: 0 4px 12px rgba(108,99,255,0.38);
+      box-shadow: 0 3px 10px rgba(79,70,229,0.45);
     }
 
     #action-buttons .btn-secondary {
-      background: rgba(0,0,0,0.07);
-      color: #4f5d75;
+      background: #ffffff;
+      color: #5b21b6;
+      border: 1.5px solid #c4b5fd;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
 
     #action-buttons .btn-secondary:hover {
-      background: rgba(0,0,0,0.11);
+      background: #f5f3ff;
     }
   </style>
 </head>
@@ -218,9 +230,8 @@
           <div class="fc-example"  id="fc-example-back">We found the charming little restaurant by pure serendipity.</div>
         </div>
       </div>
+      <div id="action-buttons"></div>
     </div>
-
-    <div id="action-buttons"></div>
   </div>
 
   <script type="module" src="./flashcard.ts"></script>

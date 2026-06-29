@@ -1,6 +1,7 @@
 mod commands;
 mod intelligence;
 mod pet;
+mod translate;
 mod tray;
 mod window;
 
@@ -44,6 +45,24 @@ pub fn run() {
             app.deep_link().register_all().unwrap_or_else(|e| {
                 eprintln!("[DeepLink] Failed to register: {}", e);
             });
+
+            // Global shortcut plugin — drives the "hotkey" translation mode.
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::ShortcutState;
+                app.handle().plugin(
+                    tauri_plugin_global_shortcut::Builder::new()
+                        .with_handler(|app, _shortcut, event| {
+                            if event.state() == ShortcutState::Pressed {
+                                let app = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    crate::translate::translate_selection(app).await;
+                                });
+                            }
+                        })
+                        .build(),
+                )?;
+            }
 
             let app_data_dir = app
                 .path()
@@ -115,6 +134,8 @@ pub fn run() {
 
                 // Spawn overlay windows for all active pets
                 let active_pets = mgr.settings.active_pets.clone();
+                let translate_enabled = mgr.settings.translate_enabled;
+                let translate_mode = mgr.settings.translate_mode.clone();
                 drop(mgr);
 
                 for inst in &active_pets {
@@ -123,6 +144,12 @@ pub fn run() {
                         Err(e) => eprintln!("[MiniPet] Window create failed: {}", e),
                     }
                 }
+
+                // Translation feature: register the hotkey (if enabled) and start
+                // the clipboard watcher loop (used by "auto" mode).
+                #[cfg(desktop)]
+                crate::translate::sync_global_shortcut(&handle, translate_enabled, &translate_mode);
+                tauri::async_runtime::spawn(crate::translate::start_clipboard_watcher(handle.clone()));
 
                 // Start SUI Blockchain Monitor (Disabled - Moving to Frontend TS SDK)
                 // let monitor = blockchain::SuiMonitor::new(handle);
@@ -135,6 +162,12 @@ pub fn run() {
                 Box::new(std::io::Error::other(e))
                     as Box<dyn std::error::Error>
             })?;
+
+            // Start as a background app (tray only) — no Dock icon on macOS.
+            // The Dock icon appears only while the Settings window is open
+            // (see window::settings::open).
+            #[cfg(target_os = "macos")]
+            let _ = app.handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             Ok(())
         })
@@ -173,6 +206,7 @@ pub fn run() {
             commands::start_ai_server,
             commands::re_raise_window,
             commands::get_monitor_work_area,
+            commands::translate_test,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

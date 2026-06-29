@@ -17,6 +17,7 @@ import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 let statusAlarming = false;
 let currentScale = 1.0;
 let isSpeechVisible = false;
+let isSpeechFlipped = false;
 let speechTimeout: NodeJS.Timeout | null = null;
 let currentLanguage: Language = "en";
 let instanceId: string | null = null;
@@ -50,6 +51,12 @@ let pendingSyncUrl = "";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let cachedSettings: any = null;
 let flashcardWindowRef: any = null;
+let lastFcW = 240;
+let lastFcH = 200;
+let lastSpeechW = 200;
+let lastSpeechH = 80;
+const SPEECH_W = 200;
+const SPEECH_H = 80;
 
 // executeTransactionWithWallet removed
 
@@ -69,10 +76,21 @@ async function getOrCreateSpeechWindow() {
       alwaysOnTop: true,
       skipTaskbar: true,
       resizable: false,
-      width: 250,
-      height: 80,
+      width: SPEECH_W,
+      height: SPEECH_H,
       shadow: false,
+      // Created hidden; shown by updateSpeechOverlay once positioned.
+      visible: false,
     });
+    // Wait for the window (and its JS listener) to be ready before we broadcast.
+    await new Promise<void>((resolve) => {
+      void win!.once("tauri://created", () => resolve());
+      void win!.once("tauri://error", () => resolve());
+      setTimeout(resolve, 5000);
+    });
+    // Brief settle so speech.ts has attached its `update-speech` listener
+    // before the first broadcast (otherwise the first message can be missed).
+    await new Promise<void>((r) => setTimeout(r, 150));
   }
   if (!speechWindowRef) speechWindowRef = win;
   return speechWindowRef;
@@ -99,9 +117,14 @@ async function getOrCreateFlashcardWindow() {
       shadow: false,
       visible: false,
     });
-    // MUST wait for window to be fully created before we can interact with it
+    // MUST wait for window to be fully created before we can interact with it.
+    // Requires the `core:webview:allow-create-webview-window` capability.
     await new Promise<void>((resolve) => {
-      void win!.once('tauri://created', () => resolve());
+      void win!.once("tauri://created", () => resolve());
+      void win!.once("tauri://error", (e) => {
+        console.error("[Flashcard] window creation failed:", e.payload);
+        resolve();
+      });
       setTimeout(resolve, 5000); // safety fallback
     });
   }
@@ -111,40 +134,100 @@ async function getOrCreateFlashcardWindow() {
 
 async function syncSpeechWindowPosition(customW?: number, customH?: number) {
   if (!speechWindowRef || !isSpeechVisible) return;
-  const pos = window.electronAPI.getLogicalPosition();
-  if (pos.x === null || pos.y === null) return;
+
+  const appWin = getCurrentWebviewWindow();
+  let pos = { x: 0, y: 0 };
+  try {
+    const outerPos = await appWin.outerPosition();
+    const { currentMonitor } = await import("@tauri-apps/api/window");
+    const monitor = await currentMonitor();
+    const factor = monitor?.scaleFactor || 1;
+    pos.x = outerPos.x / factor;
+    pos.y = outerPos.y / factor;
+  } catch (err) {
+    const cachedPos = window.electronAPI.getLogicalPosition();
+    if (cachedPos.x === null || cachedPos.y === null) return;
+    pos.x = cachedPos.x;
+    pos.y = cachedPos.y;
+  }
 
   const safeScale = Number(currentScale) || 1.0;
   const petWidth = Math.ceil(PETDEX_SPRITE.FRAME_WIDTH * safeScale);
 
-  const speechW = customW || 250;
-  const speechH = customH || 80;
+  const speechW = customW || lastSpeechW;
+  const speechH = customH || lastSpeechH;
 
-  // newY: window bottom at pos.y+16 so tail tip aligns with pet top
-  const newX = Math.round(pos.x + petWidth / 2 - speechW / 2);
-  const newY = Math.round(pos.y - speechH + 16);
+  // Center horizontally over the pet sprite width, then shift 20% of the speech window width to the right.
+  // Vertically: Anchor the bottom of the speech window (newY + speechH) to a fixed point (pos.y + 64)
+  // so the tail pointing at the pet never jumps when the bubble height resizes dynamically.
+  let newX = Math.round(pos.x + petWidth / 2 - speechW / 2);
+  let newY = Math.round(pos.y + 64 - speechH * 2);
 
   const { LogicalPosition } = await import("@tauri-apps/api/window");
+
+  isSpeechFlipped = false;
+
   await speechWindowRef.setPosition(new LogicalPosition(newX, newY));
 }
 
 async function syncFlashcardWindowPosition(customW?: number, customH?: number) {
   if (!flashcardWindowRef) return;
-  const pos = window.electronAPI.getLogicalPosition();
-  if (pos.x === null || pos.y === null) return;
+
+  const appWin = getCurrentWebviewWindow();
+  let pos = { x: 0, y: 0 };
+  try {
+    const outerPos = await appWin.outerPosition();
+    const { currentMonitor } = await import("@tauri-apps/api/window");
+    const monitor = await currentMonitor();
+    const factor = monitor?.scaleFactor || 1;
+    pos.x = outerPos.x / factor;
+    pos.y = outerPos.y / factor;
+  } catch (err) {
+    const cachedPos = window.electronAPI.getLogicalPosition();
+    if (cachedPos.x === null || cachedPos.y === null) return;
+    pos.x = cachedPos.x;
+    pos.y = cachedPos.y;
+  }
 
   const safeScale = Number(currentScale) || 1.0;
   const petWidth = Math.ceil(PETDEX_SPRITE.FRAME_WIDTH * safeScale);
+  const petHeight = Math.ceil(PETDEX_SPRITE.FRAME_HEIGHT * safeScale);
 
-  const fcW = customW || 240;
-  const fcH = customH || 200;
+  const fcW = customW || lastFcW;
+  const fcH = customH || lastFcH;
+  const MARGIN = 8;
 
-  // pos.y = top of overlay window = top of pet
-  // Place flashcard so its bottom is 8px above the pet top
-  const newX = Math.round(pos.x + petWidth / 2 - fcW / 2);
-  const newY = Math.round(pos.y - fcH - 8);
+  // Default: centered horizontally over the pet, bottom 8px above the pet top.
+  let newX = Math.round(pos.x + petWidth / 2 - fcW / 2);
+  let newY = Math.round(pos.y - fcH - MARGIN);
 
-  const { LogicalPosition } = await import("@tauri-apps/api/window");
+  const { LogicalPosition, currentMonitor } =
+    await import("@tauri-apps/api/window");
+
+  // Clamp to the work area of the monitor the pet is on so the card is never
+  // cut off (e.g. when the pet is near the top/edge of the screen).
+  try {
+    const mon = await currentMonitor();
+    if (mon) {
+      const sf = mon.scaleFactor || 1;
+      const monLeft = mon.position.x / sf;
+      const monTop = mon.position.y / sf;
+      const monW = mon.size.width / sf;
+      const monH = mon.size.height / sf;
+
+      // Not enough room above the pet → flip the card below it.
+      if (newY < monTop + MARGIN) {
+        newY = Math.round(pos.y + petHeight + MARGIN);
+      }
+      newY = Math.min(newY, Math.round(monTop + monH - fcH - MARGIN));
+      newY = Math.max(newY, Math.round(monTop + MARGIN));
+      newX = Math.min(newX, Math.round(monLeft + monW - fcW - MARGIN));
+      newX = Math.max(newX, Math.round(monLeft + MARGIN));
+    }
+  } catch {
+    // Monitor lookup failed — fall back to the unclamped position.
+  }
+
   await flashcardWindowRef.setPosition(new LogicalPosition(newX, newY));
 }
 
@@ -333,10 +416,16 @@ async function init(): Promise<void> {
   setupContextMonitoring();
   setupFlashcardLoop();
 
-  // Pre-warm the flashcard window so it's ready instantly when needed
+  // Pre-warm the flashcard + speech windows early so they're ready instantly when
+  // needed (the speech window must be listening before the first broadcast).
   setTimeout(() => {
-    void getOrCreateFlashcardWindow().catch(() => {/* silent */});
-  }, 2000);
+    void getOrCreateFlashcardWindow().catch(() => {
+      /* silent */
+    });
+    void getOrCreateSpeechWindow().catch(() => {
+      /* silent */
+    });
+  }, 200);
 
   // --- Settings Update Handling ---
   window.electronAPI.onSettingsUpdate((data: any) => {
@@ -452,25 +541,69 @@ async function init(): Promise<void> {
   // --- Master Election ---
   void setupMasterElection();
 
-  // --- Real-time Speech Sync (Event Driven) ---
-  window.electronAPI.onWindowMoved((_x: number, _y: number) => {
+  // Expose a global sync function so that AnimationController can update
+  // speech/flashcard window coordinates on every frame while the pet is walking.
+  (window as any).syncAllAttachedWindows = () => {
     if (isSpeechVisible && currentSpeechText) {
-      void syncSpeechWindowPosition(250, 80);
+      void syncSpeechWindowPosition(lastSpeechW, lastSpeechH);
     }
     if (isShowingFlashcard) {
-      const fcScale = (cachedSettings && cachedSettings.flashcardScale) || 1.0;
-      const fcW = Math.round(220 * fcScale) + 20;
-      const fcH = Math.round(130 * fcScale) + 60;
-      void syncFlashcardWindowPosition(fcW, fcH);
+      void syncFlashcardWindowPosition(lastFcW, lastFcH);
+    }
+  };
+
+  // --- Real-time Speech Sync (Event Driven) ---
+  window.electronAPI.onWindowMoved((_x: number, _y: number) => {
+    if (typeof (window as any).syncAllAttachedWindows === "function") {
+      (window as any).syncAllAttachedWindows();
     }
   });
 
-  // Greeting on startup
+  // The speech window measures its own content and reports the exact size it
+  // needs. Resize the window dynamically (so long text is never clipped)
+  // and reposition it relative to the pet.
+  void listen(`speech-size-${instanceId}`, (event: any) => {
+    void (async () => {
+      if (!speechWindowRef || !isSpeechVisible) return;
+      const w = Math.round(Number(event.payload?.w));
+      const h = Math.round(Number(event.payload?.h));
+      if (!w || !h) return;
+      lastSpeechW = w;
+      lastSpeechH = h;
+      const { LogicalSize } = await import("@tauri-apps/api/window");
+      await speechWindowRef.setSize(new LogicalSize(w, h));
+      await syncSpeechWindowPosition(w, h);
+    })();
+  });
+
+  // The flashcard window measures its own content and reports the exact size it
+  // needs. Resize the window to fit (so buttons/long text are never clipped)
+  // and reposition it (clamped to the screen).
+  void listen(`flashcard-size-${instanceId}`, (event: any) => {
+    void (async () => {
+      if (!flashcardWindowRef || !isShowingFlashcard) return;
+      const w = Math.round(Number(event.payload?.w));
+      const h = Math.round(Number(event.payload?.h));
+      if (!w || !h) return;
+      lastFcW = w;
+      lastFcH = h;
+      const { LogicalSize } = await import("@tauri-apps/api/window");
+      await flashcardWindowRef.setSize(new LogicalSize(w, h));
+      await syncFlashcardWindowPosition(w, h);
+    })();
+  });
+
+  // Greeting on startup (delay slightly to ensure coordinates and windows are ready)
   setTimeout(() => {
     const t = translations[currentLanguage];
     stateMachine.forceState("greet");
     showSpeech(pickUniqueRandom(t.hello), 4000, true, "Startup");
-  }, 1000);
+    // Force double sync after startup speech is triggered to guarantee correct starting position
+    setTimeout(() => {
+      if (isSpeechVisible)
+        void syncSpeechWindowPosition(lastSpeechW, lastSpeechH);
+    }, 200);
+  }, 2200);
 }
 
 /**
@@ -576,8 +709,6 @@ function setupMouseInteraction(
 
     if (wasDragged) return;
 
-
-
     clickCount++;
     if (clickTimer) clearTimeout(clickTimer);
 
@@ -660,36 +791,37 @@ function setupMouseInteraction(
 /**
  * Updates the internal speech bubble text and visibility.
  */
-async function updateSpeechOverlay(
-  text: string,
-  visible: boolean,
-) {
+async function updateSpeechOverlay(text: string, visible: boolean) {
   try {
     const win = await getOrCreateSpeechWindow();
     if (visible) {
       isSpeechVisible = true;
-
       const { LogicalSize } = await import("@tauri-apps/api/window");
-      await win.setSize(new LogicalSize(250, 80));
+      await win.setSize(new LogicalSize(lastSpeechW, lastSpeechH));
+      await syncSpeechWindowPosition(lastSpeechW, lastSpeechH);
       await win.show();
-      await syncSpeechWindowPosition(250, 80);
-
-      await new Promise<void>((r) => setTimeout(r, 150));
+      // Ensure the OS window manager finishes showing before we sync coordinates again
+      setTimeout(() => {
+        void syncSpeechWindowPosition(lastSpeechW, lastSpeechH);
+      }, 100);
     }
 
     void window.electronAPI.broadcastPetEvent(`update-speech-${instanceId}`, {
       text,
       visible,
+      flipped: isSpeechFlipped,
     });
 
     if (!visible) {
+      // Reset speech size when hidden so the next message starts with clean bounds
+      lastSpeechW = 200;
+      lastSpeechH = 80;
       setTimeout(() => win.hide(), 350);
     }
   } catch (err) {
     console.error("Failed to update speech window:", err);
   }
 }
-
 
 async function syncWindowSize(): Promise<void> {
   const safeScale = Number(currentScale) || 1.0;
@@ -713,13 +845,13 @@ async function syncWindowSize(): Promise<void> {
   }
 
   if (isSpeechVisible) {
-    void syncSpeechWindowPosition(250, 80);
+    void syncSpeechWindowPosition(lastSpeechW, lastSpeechH);
+    setTimeout(() => {
+      void syncSpeechWindowPosition(lastSpeechW, lastSpeechH);
+    }, 100);
   }
   if (isShowingFlashcard) {
-    const fcScale = (cachedSettings && cachedSettings.flashcardScale) || 1.0;
-    const fcW = Math.round(220 * fcScale) + 20;
-    const fcH = Math.round(130 * fcScale) + 60;
-    void syncFlashcardWindowPosition(fcW, fcH);
+    void syncFlashcardWindowPosition(lastFcW, lastFcH);
   }
 }
 
@@ -833,7 +965,12 @@ function setupFlashcardLoop(): void {
   const isRandom = cachedSettings.flashcardMode === "random";
 
   const triggerNext = () => {
-    if (isShowingFlashcard || isChatActive || isAnyChatActive || statusAlarming) {
+    if (
+      isShowingFlashcard ||
+      isChatActive ||
+      isAnyChatActive ||
+      statusAlarming
+    ) {
       scheduleNext();
       return;
     }
@@ -847,10 +984,10 @@ function setupFlashcardLoop(): void {
       clearTimeout(flashcardTimer);
     }
     if (!cachedSettings || !cachedSettings.flashcardEnabled) return;
-    
+
     if (isRandom) {
-      const minMs = (intervalMins * 60 * 1000) * 0.5;
-      const maxMs = (intervalMins * 60 * 1000) * 1.5;
+      const minMs = intervalMins * 60 * 1000 * 0.5;
+      const maxMs = intervalMins * 60 * 1000 * 1.5;
       const randomDelay = Math.random() * (maxMs - minMs) + minMs;
       flashcardTimer = setTimeout(triggerNext, randomDelay);
     } else {
@@ -870,29 +1007,30 @@ async function triggerFlashcard(): Promise<void> {
 
 function playNotificationSound(): void {
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass =
+      window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
-    
+
     const playTone = (freq: number, start: number, duration: number) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      
+
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, start);
-      
+
       gain.gain.setValueAtTime(0.1, start);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      
+
       osc.connect(gain);
       gain.connect(ctx.destination);
-      
+
       osc.start(start);
       osc.stop(start + duration);
     };
 
     playTone(659.25, ctx.currentTime, 0.35);
-    playTone(880.00, ctx.currentTime + 0.12, 0.45);
+    playTone(880.0, ctx.currentTime + 0.12, 0.45);
   } catch (e) {
     console.error("Failed to play notification sound:", e);
   }
@@ -914,14 +1052,20 @@ async function showFlashcard(card: any): Promise<void> {
   stateMachine.forceState("notify");
 
   try {
-    const fcScale = (cachedSettings && cachedSettings.flashcardScale) || 1.0;
-    // BASE_W=220, BASE_H=130 (matches flashcard/index.html defaults)
-    const BASE_W = 220;
-    const BASE_H = 130;
-    const cardW = Math.round(BASE_W * fcScale);
-    const cardH = Math.round(BASE_H * fcScale);
-    const winW  = cardW + 20;            // horizontal padding in flashcard window
-    const winH  = cardH + 60;            // buttons (~40px) + vertical padding (~20px)
+    // Card size is fixed (portrait); no user scaling.
+    const fcScale = 1.0;
+    // Portrait defaults — must match flashcard/index.html (--fc-w / face min-height).
+    const BASE_W = 170;
+    const BASE_H = 215;
+    const cardW = BASE_W;
+    const cardH = BASE_H;
+    // Initial best-guess size; the flashcard window re-measures its real content
+    // and reports back an exact size via `flashcard-size-{id}` (see init()).
+    // Buttons live inside the card, so only body padding is added here.
+    const winW = cardW + 24; // 12px horizontal padding each side
+    const winH = cardH + 24; // 12px vertical padding each side
+    lastFcW = winW;
+    lastFcH = winH;
 
     // getOrCreateFlashcardWindow waits for tauri://created internally,
     // so by the time this resolves the window JS is loaded and listening.
@@ -946,35 +1090,41 @@ async function showFlashcard(card: any): Promise<void> {
     };
 
     const labelReveal = currentLanguage === "vi" ? "Xem Nghĩa" : "Reveal";
-    const labelSkip   = currentLanguage === "vi" ? "Bỏ qua"    : "Skip";
+    const labelSkip = currentLanguage === "vi" ? "Bỏ qua" : "Skip";
 
-    void window.electronAPI.broadcastPetEvent(`update-flashcard-${instanceId}`, {
-      visible: true,
-      flashcard: flashcardPayload,
-      flipped: false,
-      scale: fcScale,
-      buttons: [
-        { label: labelReveal, action: "fc_reveal", style: "primary" },
-        { label: labelSkip,   action: "fc_skip",   style: "secondary" },
-      ],
-    });
+    void window.electronAPI.broadcastPetEvent(
+      `update-flashcard-${instanceId}`,
+      {
+        visible: true,
+        flashcard: flashcardPayload,
+        flipped: false,
+        scale: fcScale,
+        buttons: [
+          { label: labelReveal, action: "fc_reveal", style: "primary" },
+          { label: labelSkip, action: "fc_skip", style: "secondary" },
+        ],
+      },
+    );
 
     const userChoice = await new Promise<string>((resolve) => {
       let resolved = false;
-      const unlistenPromise = listen(`flashcard-button-${instanceId}`, (event: any) => {
-        if (!resolved) {
-          resolved = true;
-          resolve(event.payload.action);
-          void unlistenPromise.then(u => u());
-        }
-      });
+      const unlistenPromise = listen(
+        `flashcard-button-${instanceId}`,
+        (event: any) => {
+          if (!resolved) {
+            resolved = true;
+            resolve(event.payload.action);
+            void unlistenPromise.then((u) => u());
+          }
+        },
+      );
 
       if (cachedSettings && cachedSettings.flashcardAutoFlip) {
         setTimeout(() => {
           if (!resolved) {
             resolved = true;
             resolve("fc_reveal");
-            void unlistenPromise.then(u => u());
+            void unlistenPromise.then((u) => u());
           }
         }, 5000);
       }
@@ -984,22 +1134,27 @@ async function showFlashcard(card: any): Promise<void> {
       stateMachine.forceState("happy");
       const labelDone = currentLanguage === "vi" ? "Đã học" : "Got it!";
 
-      void window.electronAPI.broadcastPetEvent(`update-flashcard-${instanceId}`, {
-        visible: true,
-        flashcard: flashcardPayload,
-        flipped: true,
-        scale: fcScale,
-        buttons: [{ label: labelDone, action: "fc_done", style: "primary" }],
-      });
+      void window.electronAPI.broadcastPetEvent(
+        `update-flashcard-${instanceId}`,
+        {
+          visible: true,
+          flashcard: flashcardPayload,
+          flipped: true,
+          scale: fcScale,
+          buttons: [{ label: labelDone, action: "fc_done", style: "primary" }],
+        },
+      );
 
       await new Promise<string>((resolve) => {
-        const unlistenPromise = listen(`flashcard-button-${instanceId}`, (event: any) => {
-          resolve(event.payload.action);
-          void unlistenPromise.then(u => u());
-        });
+        const unlistenPromise = listen(
+          `flashcard-button-${instanceId}`,
+          (event: any) => {
+            resolve(event.payload.action);
+            void unlistenPromise.then((u) => u());
+          },
+        );
       });
     }
-
   } catch (err) {
     console.error("Flashcard error:", err);
   } finally {
@@ -1012,10 +1167,11 @@ async function showFlashcard(card: any): Promise<void> {
 
 async function hideFlashcard(): Promise<void> {
   if (!flashcardWindowRef) return;
-  void window.electronAPI.broadcastPetEvent(`update-flashcard-${instanceId}`, { visible: false });
+  void window.electronAPI.broadcastPetEvent(`update-flashcard-${instanceId}`, {
+    visible: false,
+  });
   setTimeout(() => flashcardWindowRef?.hide(), 350);
 }
-
 
 function getSpeechCategory(appName: string, tabTitle: string | null): string {
   const appLower = appName.toLowerCase();

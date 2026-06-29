@@ -19,6 +19,7 @@
     "core:window:allow-outer-position",
     "core:window:allow-create",
     "core:window:allow-destroy",
+    "core:webview:allow-create-webview-window",
     "core:event:default",
     "dialog:allow-open",
     "fs:default",
